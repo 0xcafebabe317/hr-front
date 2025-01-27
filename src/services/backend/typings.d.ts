@@ -135,6 +135,10 @@ declare namespace API {
     yearmonth: string;
   };
 
+  type ChatRequest = {
+    message: string;
+  };
+
   type UserScoreRequest = {
     current: number;
     pageSize: number;

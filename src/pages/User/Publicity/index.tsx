@@ -1,28 +1,37 @@
+import { chatWithBot } from '@/services/backend/AI'; // 引入聊天API
 import { getAnnouncement } from '@/services/backend/PerformanceContracts';
-import { Button, Card, message, Modal, Spin, Typography } from 'antd';
-import React, { useEffect, useState } from 'react';
+import { RobotOutlined, UserOutlined } from '@ant-design/icons'; // 用于头像
+import { Avatar, Button, Card, Input, message, Modal, Typography } from 'antd';
+import React, { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown'; // 引入 react-markdown
+import remarkGfm from 'remark-gfm'; // 支持 GitHub 风格的 Markdown
 
 const { Paragraph } = Typography;
 
 const Publicity: React.FC = () => {
-  const [announcement, setAnnouncement] = useState<string | null>(null); // 存储公告内容
-  const [publishTime, setPublishTime] = useState<string | null>(null); // 存储公告发布时间
-  const [loading, setLoading] = useState<boolean>(false); // 控制加载状态
-  const [timeRemaining, setTimeRemaining] = useState<string>(''); // 存储剩余时间信息
-  const [modalVisible, setModalVisible] = useState<boolean>(false); // 控制问题反馈弹窗可见性
+  const [announcement, setAnnouncement] = useState<string | null>(null);
+  const [publishTime, setPublishTime] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [feedbackModalVisible, setFeedbackModalVisible] = useState<boolean>(false);
+  const [chatModalVisible, setChatModalVisible] = useState<boolean>(false); // 控制聊天弹窗可见性
+  const [chatInput, setChatInput] = useState<string>(''); // 聊天框输入内容
+  const [chatHistory, setChatHistory] = useState<Array<{ role: string; content: string }>>([]); // 聊天记录
+  const [isThinking, setIsThinking] = useState<boolean>(false); // 控制“正在思考...”提示的显示
 
-  // 获取公告内容
+  const chatContainerRef = useRef<HTMLDivElement | null>(null); // 使用 ref 来获取聊天容器
+
   useEffect(() => {
     const fetchAnnouncement = async () => {
       setLoading(true);
       try {
+        // 假设 getAnnouncement 是一个后端接口调用
         const response = await getAnnouncement();
         if (response?.data) {
-          setAnnouncement(response.data.content); // 设置公告内容
+          setAnnouncement(response.data.content);
           const formattedPublishTime = response.data.createTime
-            ? new Date(response.data.createTime).toLocaleString() // 转换为本地时间字符串
+            ? new Date(response.data.createTime).toLocaleString()
             : null;
-          setPublishTime(formattedPublishTime); // 设置公告发布时间
+          setPublishTime(formattedPublishTime);
         } else {
           message.error('无法获取公告内容');
         }
@@ -36,120 +45,69 @@ const Publicity: React.FC = () => {
     fetchAnnouncement();
   }, []);
 
-  // 计算剩余时间
+  // 每次 chatHistory 更新时滚动到最底部
   useEffect(() => {
-    const calculateRemainingTime = () => {
-      const now = new Date();
-      const currentDate = now.getDate();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
+    const chatContainer = chatContainerRef.current;
+    if (chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  }, [chatHistory]);
 
-      let startDate: Date | null = null;
-      let endDate: Date | null = null;
-      let processName = '';
-
-      if (currentDate < 15) {
-        startDate = new Date(currentYear, currentMonth, 15, 9, 30);
-        endDate = new Date(currentYear, currentMonth, 18, 18, 30);
-        processName = '评分流程';
-      } else if (currentDate >= 15 && currentDate <= 18) {
-        startDate = new Date(currentYear, currentMonth, 15, 9, 30);
-        endDate = new Date(currentYear, currentMonth, 18, 18, 30);
-        processName = '评分流程';
-      } else if (currentDate >= 19 && currentDate <= 21) {
-        startDate = new Date(currentYear, currentMonth, 19, 9, 30);
-        endDate = new Date(currentYear, currentMonth, 21, 18, 30);
-        processName = '公示流程';
-      } else if (currentDate >= 22 && currentDate <= 23) {
-        startDate = new Date(currentYear, currentMonth, 22, 9, 30);
-        endDate = new Date(currentYear, currentMonth, 23, 18, 30);
-        processName = '调整评分流程';
-      } else {
-        // 超出当前月23号，提示下月评分流程开始时间
-        startDate = new Date(currentYear, currentMonth + 1, 15, 9, 30);
-        endDate = new Date(currentYear, currentMonth + 1, 18, 18, 30);
-        processName = '评分流程';
-      }
-
-      if (startDate && endDate) {
-        const remainingTime = startDate.getTime() - now.getTime();
-
-        if (remainingTime > 0) {
-          const days = Math.floor(remainingTime / (1000 * 60 * 60 * 24));
-          const hours = Math.floor((remainingTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-          const minutes = Math.floor((remainingTime % (1000 * 60 * 60)) / (1000 * 60));
-          setTimeRemaining(`${processName}：还有 ${days} 天 ${hours} 小时 ${minutes} 分钟【开始】`);
-        } else {
-          const remainingTimeEnd = endDate.getTime() - now.getTime();
-          if (remainingTimeEnd > 0) {
-            const days = Math.floor(remainingTimeEnd / (1000 * 60 * 60 * 24));
-            const hours = Math.floor((remainingTimeEnd % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-            const minutes = Math.floor((remainingTimeEnd % (1000 * 60 * 60)) / (1000 * 60));
-            setTimeRemaining(`${processName}：剩余 ${days} 天 ${hours} 小时 ${minutes} 分钟`);
-          } else {
-            setTimeRemaining(`${processName} 【已结束】`);
-          }
-        }
-      }
-    };
-
-    calculateRemainingTime();
-    const intervalId = setInterval(calculateRemainingTime, 60000); // 每分钟更新一次剩余时间
-
-    return () => clearInterval(intervalId); // 清除定时器
-  }, []);
-
-  // 打开问题反馈弹窗
   const handleFeedbackClick = () => {
-    setModalVisible(true);
+    setFeedbackModalVisible(true);
   };
 
-  // 关闭问题反馈弹窗
-  const handleModalClose = () => {
-    setModalVisible(false);
+  const handleChatClick = () => {
+    setChatModalVisible(true);
   };
 
-  // 如果公告内容不存在，显示加载状态
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', marginTop: '20%' }}>
-        <Spin size="large" />
-      </div>
-    );
-  }
+  const handleSendChat = async () => {
+    if (!chatInput.trim()) {
+      message.warning('请输入聊天内容');
+      return;
+    }
+
+    // 记录用户消息
+    setChatHistory((prev) => [...prev, { role: 'user', content: chatInput }]);
+    setChatInput('');
+    setIsThinking(true);
+
+    try {
+      const response = await chatWithBot({ message: chatInput });
+      const messageContent = response;
+      if (messageContent) {
+        setChatHistory((prev) => [...prev, { role: 'assistant', content: messageContent }]);
+      } else {
+        message.error('机器人未返回有效消息');
+      }
+    } catch (error) {
+      setIsThinking(false);
+      message.error('聊天请求失败');
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendChat();
+    }
+  };
 
   return (
     <div style={{ marginTop: '50px' }}>
-      {/* 红色大字剩余时间信息，顶部显示 */}
-      <div
-        style={{
-          fontSize: '24px',
-          color: '#FF0000',
-          fontWeight: 'bold',
-          textAlign: 'center',
-          marginBottom: '20px',
-        }}
-      >
-        {timeRemaining}
-      </div>
-
-      {/* 公告卡片居中显示 */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <Card
           title={
             <span
-              style={{
-                fontSize: '28px',
-                color: '#FF0000',
-                textAlign: 'center',
-                display: 'block',
-              }}
+              style={{ fontSize: '28px', color: '#FF0000', textAlign: 'center', display: 'block' }}
             >
               公告
             </span>
           }
           bordered={false}
-          style={{ width: '80%' }} // 卡片宽度保持80%
+          style={{ width: '80%' }}
         >
           {announcement ? (
             <Paragraph
@@ -162,7 +120,6 @@ const Publicity: React.FC = () => {
               暂无公告内容
             </Paragraph>
           )}
-          {/* 显示公告发布时间 */}
           {publishTime && (
             <div style={{ textAlign: 'right', fontSize: '14px', color: '#888', marginTop: '10px' }}>
               <div style={{ display: 'inline-block', textAlign: 'left' }}>
@@ -175,33 +132,140 @@ const Publicity: React.FC = () => {
         </Card>
       </div>
 
-      <Button
-        type="primary"
-        icon="问题反馈"
-        shape="round"
+      <div
         style={{
           position: 'fixed',
-          top: 80, // 距离顶部100px
-          right: 20, // 距离右侧20px
-          zIndex: 1000, // 确保按钮在最上层
-          width: 100, // 按钮的宽度
-          height: 40, // 按钮的高度（如果需要调整按钮的大小）
-          lineHeight: '50px', // 按钮的高度，也影响文本垂直居中
-          textAlign: 'center', // 使图标水平居中
+          top: 80,
+          right: 20,
+          display: 'flex',
+          gap: '10px',
+          zIndex: 1000,
         }}
-        onClick={handleFeedbackClick}
-      />
+      >
+        <Button type="primary" shape="round" onClick={handleFeedbackClick}>
+          问题反馈
+        </Button>
+        <Button type="primary" shape="round" onClick={handleChatClick}>
+          聊天机器人
+        </Button>
+      </div>
 
-      {/* 问题反馈弹窗 */}
       <Modal
         title="问题反馈"
-        visible={modalVisible}
-        onCancel={handleModalClose}
+        visible={feedbackModalVisible}
+        onCancel={() => setFeedbackModalVisible(false)}
         footer={null}
         width={400}
       >
         <p>请联系电话: 唐玮志 13308941203</p>
-        {/* 在这里可以添加反馈表单或者其他内容 */}
+      </Modal>
+
+      <Modal
+        title="聊天机器人"
+        visible={chatModalVisible}
+        onCancel={() => setChatModalVisible(false)}
+        footer={null}
+        width={1000}
+        height={600} // 调整聊天框的高度
+        bodyStyle={{ padding: 0 }} // 移除 Modal 默认的内边距
+      >
+        <div
+          ref={chatContainerRef}
+          style={{
+            maxHeight: '450px', // 设置最大高度
+            overflowY: 'auto', // 让聊天内容滚动
+            marginBottom: '10px',
+            padding: '10px', // 增加内边距让内容不贴边
+          }}
+        >
+          {chatHistory.map((msg, index) => (
+            <div
+              key={index}
+              style={{
+                display: 'flex',
+                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', // 用户消息右对齐，机器人消息左对齐
+                marginBottom: '10px',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
+                }}
+              >
+                <Avatar
+                  icon={msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
+                  size="small"
+                />
+                <div
+                  style={{
+                    maxWidth: '80%',
+                    backgroundColor: msg.role === 'user' ? '#DCF8C6' : '#E9E9E9',
+                    padding: '8px 16px',
+                    borderRadius: '20px',
+                    wordWrap: 'break-word',
+                  }}
+                >
+                  {/* 使用 ReactMarkdown 渲染消息内容 */}
+                  <ReactMarkdown children={msg.content} remarkPlugins={[remarkGfm]} />
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {isThinking && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-start',
+                marginBottom: '10px',
+                gap: '10px',
+                alignItems: 'center',
+              }}
+            >
+              <Avatar icon={<RobotOutlined />} size="small" />
+              <div
+                style={{
+                  maxWidth: '80%',
+                  backgroundColor: '#E9E9E9',
+                  padding: '8px 16px',
+                  borderRadius: '20px',
+                  wordWrap: 'break-word',
+                  color: '#888',
+                }}
+              >
+                正在思考...
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{ position: 'relative' }}>
+          <Input.TextArea
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={handleKeyPress}
+            rows={4}
+            placeholder="请输入聊天内容"
+            style={{
+              borderRadius: '20px',
+              resize: 'none', // 禁止手动调整文本框大小
+            }}
+          />
+          <Button
+            type="primary"
+            onClick={handleSendChat}
+            style={{
+              position: 'absolute',
+              bottom: '10px',
+              right: '10px',
+              borderRadius: '20px',
+            }}
+          >
+            发送
+          </Button>
+        </div>
       </Modal>
     </div>
   );
