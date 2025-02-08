@@ -145,9 +145,9 @@ const Publicity: React.FC = () => {
         <Button type="primary" shape="round" onClick={handleFeedbackClick}>
           问题反馈
         </Button>
-        <Button type="primary" shape="round" onClick={handleChatClick}>
+        {/* <Button type="primary" shape="round" onClick={handleChatClick}>
           聊天机器人
-        </Button>
+        </Button> */}
       </div>
 
       <Modal
